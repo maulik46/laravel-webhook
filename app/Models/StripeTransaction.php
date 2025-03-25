@@ -13,4 +13,17 @@ class StripeTransaction extends Model
         'status',
         'metadata',
     ];
+
+    /**
+     * Stripe validation rules
+    */
+    public static function stripeRules(): array
+    {
+        return [
+            'type' => 'required|string',
+            'data.object.id' => 'required|string',
+            'data.object.amount' => 'required|numeric',
+            'data.object.currency' => 'required|string',
+        ];
+    }
 }

@@ -2,13 +2,21 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\GithubCommit;
+use App\Models\StripeTransaction;
 use App\Services\WebhookService;
+use App\Traits\ApiResponseTrait;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpFoundation\Response;
+use Throwable;
 
 class WebhookController extends Controller
 {
-    protected $webhookService;
+    use ApiResponseTrait;
+
+    private $webhookService;
 
     public function __construct(WebhookService $webhookService)
     {
@@ -17,44 +25,50 @@ class WebhookController extends Controller
 
     public function handle(Request $request)
     {
+        if (!$request->isJson()) {
+            return $this->errorResponse('Invalid request. Must be JSON.', Response::HTTP_BAD_REQUEST);
+        }
+
         try {
-            // Validate basic JSON payload
-            $payload = $request->validate([
-                '*' => 'required'
-            ]);
-
-            // Determine webhook source
             $source = $this->determineWebhookSource($request);
-            
-            // Process webhook based on source
+
+            $payload = $this->validatePayload($request, $source);
+
             $result = $this->webhookService->processWebhook($source, $payload, $request->headers->all());
-            
-            return response()->json([
-                'message' => 'Webhook processed successfully',
-                'data' => $result
-            ], 200);
 
-        } catch (\Exception $e) {
-            Log::error('Webhook processing error: ' . $e->getMessage());
-
-            return response()->json([
-                'message' => 'Webhook processing failed',
-                'error' => $e->getMessage()
-            ], 400);
+            return $this->successResponse(
+                'Webhook processed successfully',
+                [
+                    'webhook_status' => $result
+                ], 
+                Response::HTTP_OK
+            );
+        }  
+        catch (ValidationException $e) {
+            return $this->errorResponse('Validation failed: ' . $e->getMessage(), Response::HTTP_UNPROCESSABLE_ENTITY);
+        } 
+        catch (Throwable $e) {
+            return $this->errorResponse('Webhook processing failed: ' . $e->getMessage(), Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
-    private function determineWebhookSource(Request $request)
+    private function validatePayload(Request $request, ?string $source): array
     {
-        // Detect source based on headers or payload characteristics
-        if ($request->hasHeader('X-GitHub-Event')) {
-            return 'github';
-        }
+        $validationRules = match ($source) {
+            'github' => GithubCommit::githubRules(),
+            'stripe' => StripeTransaction::stripeRules(),
+            default  => ['*' => 'required'],
+        };
 
-        if ($request->hasHeader('Stripe-Signature')) {
-            return 'stripe';
-        }
+        return $request->validate($validationRules);
+    }
 
-        return null;
+    private function determineWebhookSource(Request $request): ?string
+    {
+        return match (true) {
+            $request->hasHeader('X-GitHub-Event') => 'github',
+            $request->hasHeader('Stripe-Signature') => 'stripe',
+            default => null,
+        };
     }
 }    

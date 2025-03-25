@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Repositories\WebhookLogRepository;
 use App\Repositories\GithubCommitRepository;
 use App\Repositories\StripeTransactionRepository;
-use Illuminate\Support\Facades\Log;
 
 class WebhookService
 {
