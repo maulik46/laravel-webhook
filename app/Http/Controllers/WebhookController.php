@@ -55,6 +55,6 @@ class WebhookController extends Controller
             return 'stripe';
         }
 
-        return 'custom';
+        return null;
     }
 }    
